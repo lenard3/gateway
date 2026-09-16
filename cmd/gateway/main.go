@@ -100,10 +100,11 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr:         cfg.Server.Addr,
-		Handler:      router,
-		ReadTimeout:  readTimeout,
-		WriteTimeout: writeTimeout,
+		Addr:           cfg.Server.Addr,
+		Handler:        router,
+		ReadTimeout:    readTimeout,
+		WriteTimeout:   writeTimeout,
+		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
 	// Creates a signal channel
