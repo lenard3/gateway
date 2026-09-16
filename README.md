@@ -23,22 +23,25 @@ timeouts and custom headers. Sits in front of multiple backend services.
 - [x] `NoRoute` handler (404 for unmatched paths)
 - [x] Proxy `ErrorHandler` (uniform 502 when backend unreachable)
 - [x] Backend `name` + `url` validation at startup
-
-### Planned
-
-- [ ] Graceful shutdown — Phase 5
+- [x] Graceful shutdown + config restructure — Phase 5
+  - Add `server:` block to `config.yaml` (`addr`, `log_level`, `read_timeout`, `write_timeout`, `shutdown_timeout`)
+  - Rewrite `config.go`: read only `CONFIG_FILE` from env, parse YAML for `server:` + routing
+  - Drop `GATEWAY_ADDR`, `LOG_LEVEL`, `MUSIC_BACKEND_URL` from env
+  - Shrink `.env.example` to `CONFIG_FILE` only
   - Replace `router.Run` with `http.Server`
-  - Add `ReadTimeout`, `WriteTimeout`, `ShutdownTimeout` to config + `.env.example`
   - `signal.Notify` for SIGINT/SIGTERM; `server.Shutdown(ctx)` with deadline
   - Log shutdown progress; exit 0 on clean, 1 on timeout
   - Filter `http.ErrServerClosed` from serve error
+
+### Planned
+
 - [ ] Dockerization (multi-stage Dockerfiles + compose) — Phase 6
   - `gateway/Dockerfile` with `dev` + `prod` targets
   - `gateway/.dockerignore`
   - `docker-compose.yml` at repo root, gateway depends on music
 - [ ] Postgres connection pool + migrations — Phase 7
   - Add `pgx`, `pgxpool`, `golang-migrate`
-  - Add `DATABASE_URL` to config (required, errors if missing)
+  - Add `DATABASE_URL` to `.env` + config (env-only, required, errors if missing)
   - `migrations/000001_create_users.up.sql` + `.down.sql`
   - `internal/store/db.go` (pool creation + migration runner, handle `ErrNoChange`)
   - Open pool + run migrations at startup, close pool on shutdown
@@ -51,12 +54,14 @@ timeouts and custom headers. Sits in front of multiple backend services.
   - Unique-constraint violation on email -> 409 `email_exists`
 - [ ] Login + JWT access tokens — Phase 9
   - Add `golang-jwt/jwt/v5`
-  - Add `JWT_SECRET` (required, no default) + `JWT_ACCESS_TTL` to config
+  - Add `JWT_SECRET` to `.env` + config (env-only, required, no default)
+  - Add `access_ttl` to `jwt:` block in `config.yaml`
   - `internal/auth/jwt.go` (HS256, claims: sub, iat, exp, jti, iss)
   - `POST /login`; same 401 `invalid_credentials` for wrong password + unknown email
 - [ ] Refresh tokens with Redis — Phase 10
   - Add `redis/go-redis/v9`
-  - Add `REDIS_URL` + `JWT_REFRESH_TTL` to config
+  - Add `REDIS_URL` to `.env` + config (env-only)
+  - Add `refresh_ttl` to `jwt:` block in `config.yaml`
   - `internal/store/tokens.go` (opaque refresh tokens, TTL = refresh lifetime)
   - `POST /refresh` with token rotation (delete old, issue new)
   - `POST /login` issues both access + refresh tokens
@@ -79,19 +84,29 @@ timeouts and custom headers. Sits in front of multiple backend services.
 
 ### Environment variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `GATEWAY_ADDR` | Listen address | `:9999` |
-| `LOG_LEVEL` | slog level (`debug`/`info`/`warn`/`error`) | `info` |
-| `CONFIG_FILE` | Path to YAML config | `config.yaml` |
-| `MUSIC_BACKEND_URL` | Music backend base URL | `http://localhost:8080` |
+Current (Phases 1-4). Phase 5 restructures this — `GATEWAY_ADDR`,
+`LOG_LEVEL`, and `MUSIC_BACKEND_URL` move into the YAML `server:` block
+(or are dropped, since backend URLs already live in `backends[].url`).
+After Phase 5, `.env` holds only `CONFIG_FILE` plus secret vars added in
+later phases.
+
+| Variable | Description | Default | Phase |
+|----------|-------------|---------|-------|
+| `CONFIG_FILE` | Path to YAML config | `config.yaml` | 1 |
+| `GATEWAY_ADDR` | Listen address (moves to YAML in Phase 5) | `:9999` | 1 |
+| `LOG_LEVEL` | slog level (moves to YAML in Phase 5) | `info` | 1 |
+| `MUSIC_BACKEND_URL` | Music backend URL (dropped in Phase 5) | `http://localhost:8080` | 1 |
+| `DATABASE_URL` | Postgres connection string (env-only, secret) | — | 7 |
+| `JWT_SECRET` | JWT signing secret (env-only, required) | — | 9 |
+| `REDIS_URL` | Redis connection string (env-only, secret) | `localhost:6379` | 10 |
 
 Copy `.env.example` to `.env`. The `.env` file is gitignored.
 
 ### YAML config (`config.yaml`)
 
 The config file defines a `defaults` block, a list of `backends`, and a
-list of `routes`.
+list of `routes`. Phase 5 adds a `server:` block (addr, log_level,
+timeouts); Phase 9 adds a `jwt:` block (access_ttl, refresh_ttl).
 
 ```yaml
 defaults:
