@@ -1,0 +1,24 @@
+defaults:
+  timeout: 10s
+  health_path: /healthz
+  retries: 0
+  headers:
+    X-Forwarded-By: sim-gateway
+
+backends:
+  - name: music
+    url: http://localhost:8080
+    timeout: 5s
+    headers:
+      X-Forwarded-Service: music
+
+routes:
+  - method: GET
+    path: /albums
+    backend: music
+  - method: GET
+    path: /album/:id
+    backend: music
+  - method: POST
+    path: /album
+    backend: music
