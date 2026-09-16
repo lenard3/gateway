@@ -57,6 +57,7 @@ func NewTable(file *File) (*Table, error) {
 			},
 		}
 
+		// Timeout gets set to the const default
 		var timeout time.Duration
 		var err error
 		if backend.Timeout == "" {
@@ -89,4 +90,12 @@ func NewTable(file *File) (*Table, error) {
 func (t *Table) ProxyFor(name string) (backendEntry, bool) {
 	entry, ok := t.entries[name]
 	return entry, ok
+}
+
+func (t *Table) CheckTimeouts(global time.Duration) {
+	for name, entry := range t.entries {
+		if global < entry.Timeout {
+			slog.Warn("global request timeout shorter than backend timeout", "backend", name, "global_timeout", global, "backend_timeout", entry.Timeout)
+		}
+	}
 }

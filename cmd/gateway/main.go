@@ -44,6 +44,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	// Requests get checked against the set global Request Timeout
+	requestTimeout, err := time.ParseDuration(cfg.Server.RequestTimeout)
+	if err != nil {
+		slog.Error("Request Timeout not parsable", "error", err)
+		os.Exit(1)
+	}
+	table.CheckTimeouts(requestTimeout)
+
 	// build new gin router
 	router := gin.New()
 
