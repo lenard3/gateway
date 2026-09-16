@@ -86,14 +86,17 @@ func main() {
 	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
 	if err != nil {
 		slog.Error("Read Timeout", "error", err)
+		os.Exit(1)
 	}
 	writeTimeout, err := time.ParseDuration(cfg.Server.WriteTimeout)
 	if err != nil {
 		slog.Error("Write Timeout", "error", err)
+		os.Exit(1)
 	}
 	shutdownTimeout, err := time.ParseDuration(cfg.Server.ShutdownTimeout)
 	if err != nil {
 		slog.Error("Write Timeout", "error", err)
+		os.Exit(1)
 	}
 
 	server := &http.Server{
