@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"gateway/internal/config"
 	"gateway/internal/httperr"
 	"gateway/internal/logger"
@@ -10,6 +11,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -24,9 +27,9 @@ func main() {
 	}
 
 	// Start logger
-	lgr := logger.New(cfg.LogLevel)
+	lgr := logger.New(cfg.Server.LogLevel)
 	slog.SetDefault(lgr)
-	slog.Info("gateway starting", "addr", cfg.Addr, "log_level", cfg.LogLevel)
+	slog.Info("gateway starting", "addr", cfg.Server.Addr, "log_level", cfg.Server.LogLevel)
 
 	// Load config file
 	cfgyml, err := routing.LoadFile(cfg.ConfigFile)
@@ -79,10 +82,51 @@ func main() {
 	router.GET("/healthz", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
-	err = router.Run(cfg.Addr)
+
+	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
 	if err != nil {
-		slog.Error("Failed to start gin router")
-		os.Exit(1)
+		slog.Error("Read Timeout", "error", err)
+	}
+	writeTimeout, err := time.ParseDuration(cfg.Server.WriteTimeout)
+	if err != nil {
+		slog.Error("Write Timeout", "error", err)
+	}
+	shutdownTimeout, err := time.ParseDuration(cfg.Server.ShutdownTimeout)
+	if err != nil {
+		slog.Error("Write Timeout", "error", err)
 	}
 
+	server := &http.Server{
+		Addr:         cfg.Server.Addr,
+		Handler:      router,
+		ReadTimeout:  readTimeout,
+		WriteTimeout: writeTimeout,
+	}
+
+	// Creates a signal channel
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		err := server.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server failed", "error", err)
+			os.Exit(1)
+		}
+	}()
+
+	// Reads the signal channel until SIGINT/SIGTERM arrives
+	<-sigCh
+	slog.Info("shutdown signal received")
+
+	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	shErr := server.Shutdown(ctx)
+	if shErr != nil {
+		slog.Error("shutdown error", "error", err)
+		os.Exit(1)
+	} else {
+		slog.Info("shutdown complete")
+		os.Exit(0)
+	}
 }

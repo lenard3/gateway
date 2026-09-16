@@ -1,49 +1,63 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/goccy/go-yaml"
 	"github.com/joho/godotenv"
 )
 
 type Config struct {
-	Addr            string
-	LogLevel        string
-	ConfigFile      string
-	MusicBackendURL string
+	ConfigFile string
+	Server     Server `yaml:"server"`
 }
 
-// Load tries to load all the environment variables.
-// If variable is not set, default is added in some cases
-// Current defaults are: GATEWAY_ADDR, LOG_LEVEL, MUSIC_BACKEND_URL
+type Server struct {
+	Addr            string `yaml:"addr"`
+	LogLevel        string `yaml:"log_level"`
+	ReadTimeout     string `yaml:"read_timeout"`
+	WriteTimeout    string `yaml:"write_timeout"`
+	ShutdownTimeout string `yaml:"shutdown_timeout"`
+}
+
+// Load tries to load all the env vars.
+// Also reads config file for Server settings.
 // Returns filled config, error
 func Load() (*Config, error) {
 	godotenv.Load("./.env")
+	c := Config{}
+	var ok bool
 
-	gatewayAddr, gwFilled := os.LookupEnv("GATEWAY_ADDR")
-	if !gwFilled {
-		gatewayAddr = ":9999"
+	c.ConfigFile, ok = os.LookupEnv("CONFIG_FILE")
+	if !ok {
+		c.ConfigFile = "config.yaml"
 	}
 
-	logLevel, llFilled := os.LookupEnv("LOG_LEVEL")
-	if !llFilled {
-		logLevel = "info"
+	data, err := os.ReadFile(c.ConfigFile)
+	if err != nil {
+		return nil, fmt.Errorf("read config: %w", err)
 	}
 
-	configFile, cfFilled := os.LookupEnv("CONFIG_FILE")
-	if !cfFilled {
-		configFile = "config.yaml"
+	errUn := yaml.Unmarshal(data, &c)
+	if errUn != nil {
+		return nil, fmt.Errorf("parse config: %w", errUn)
 	}
 
-	musicBackendURL, mbFilled := os.LookupEnv("MUSIC_BACKEND_URL")
-	if !mbFilled {
-		musicBackendURL = "http://localhost:8080"
+	if c.Server.Addr == "" {
+		c.Server.Addr = ":9000"
 	}
-
-	return &Config{
-		Addr:            gatewayAddr,
-		LogLevel:        logLevel,
-		ConfigFile:      configFile,
-		MusicBackendURL: musicBackendURL,
-	}, nil
+	if c.Server.LogLevel == "" {
+		c.Server.LogLevel = "info"
+	}
+	if c.Server.ReadTimeout == "" {
+		c.Server.ReadTimeout = "10s"
+	}
+	if c.Server.WriteTimeout == "" {
+		c.Server.WriteTimeout = "10s"
+	}
+	if c.Server.ShutdownTimeout == "" {
+		c.Server.ShutdownTimeout = "15s"
+	}
+	return &c, nil
 }
