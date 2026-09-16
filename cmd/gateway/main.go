@@ -115,10 +115,15 @@ func main() {
 		MaxHeaderBytes: 1 << 20, // 1MB
 	}
 
-	// Creates a signal channel
+	// Buffered signal channel — capacity 1 so a signal is not dropped
+	// if the receiver is not ready the instant it arrives.
 	sigCh := make(chan os.Signal, 1)
+
+	// Route SIGINT/SIGTERM to sigCh
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
 
+	// Run the server in a goroutine so the main goroutine is free to
+	// wait for a signal. ListenAndServe blocks until the server stops.
 	go func() {
 		err := server.ListenAndServe()
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -127,17 +132,26 @@ func main() {
 		}
 	}()
 
-	// Reads the signal channel until SIGINT/SIGTERM arrives
+	// Block here until a signal arrives on sigCh.
+	// Main goroutine waits.
 	<-sigCh
 	slog.Info("shutdown signal received")
 
+	// Give in-flight handlers a deadline to finish. shutdownTimeout
+	// comes from config. defer cancel() releases the timer resources
+	// even if Shutdown returns early.
 	ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
 	defer cancel()
+
+	// Shutdown stops accepting new requests and waits for active
+	// ones to finish (only to deadline)
 	shErr := server.Shutdown(ctx)
 	if shErr != nil {
+		// Shutdown timed out or failed — some connections were dropped.
 		slog.Error("shutdown error", "error", shErr)
 		os.Exit(1)
 	} else {
+		// All in-flight requests completed within the deadline.
 		slog.Info("shutdown complete")
 		os.Exit(0)
 	}
