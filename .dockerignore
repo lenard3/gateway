@@ -1,0 +1,5 @@
+/gateway
+.git/
+.env
+*.md
+docker-compose.yaml

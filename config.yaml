@@ -7,7 +7,7 @@ defaults:
 
 backends:
   - name: music
-    url: http://localhost:8080
+    url: http://music:8080
     timeout: 5s
     headers:
       X-Forwarded-Service: music
@@ -22,3 +22,10 @@ routes:
   - method: POST
     path: /album
     backend: music
+
+server:
+  addr: ":9000"
+  log_level: "info"
+  read_timeout: "10s"
+  write_timeout: "10s"
+  shutdown_timeout: "15s"
