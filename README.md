@@ -32,20 +32,19 @@ timeouts and custom headers. Sits in front of multiple backend services.
   - `signal.Notify` for SIGINT/SIGTERM; `server.Shutdown(ctx)` with deadline
   - Log shutdown progress; exit 0 on clean, 1 on timeout
   - Filter `http.ErrServerClosed` from serve error
+- [x] Dockerization (multi-stage Dockerfiles + compose) — Phase 6
+  - `gateway/Dockerfile` with `dev` + `prod` targets
+  - `gateway/.dockerignore`
+  - `gateway/docker-compose.yml` — gateway, music, postgres, redis on one network
 
 ### Planned
 
-- [ ] Dockerization (multi-stage Dockerfiles + compose) — Phase 6
-  - `gateway/Dockerfile` with `dev` + `prod` targets
-  - `gateway/.dockerignore`
-  - `docker-compose.yml` at repo root, gateway depends on music
 - [ ] Postgres connection pool + migrations — Phase 7
   - Add `pgx`, `pgxpool`, `golang-migrate`
   - Add `DATABASE_URL` to `.env` + config (env-only, required, errors if missing)
   - `migrations/000001_create_users.up.sql` + `.down.sql`
   - `internal/store/db.go` (pool creation + migration runner, handle `ErrNoChange`)
   - Open pool + run migrations at startup, close pool on shutdown
-  - Postgres service in `docker-compose.yml`
 - [ ] User registration with argon2id — Phase 8
   - Add `golang.org/x/crypto/argon2`
   - `internal/auth/password.go` (hash + verify in PHC string format)
@@ -65,7 +64,6 @@ timeouts and custom headers. Sits in front of multiple backend services.
   - `internal/store/tokens.go` (opaque refresh tokens, TTL = refresh lifetime)
   - `POST /refresh` with token rotation (delete old, issue new)
   - `POST /login` issues both access + refresh tokens
-  - Redis service in `docker-compose.yml`
 - [ ] Auth middleware — Phase 11
   - `internal/auth/verify.go` (parse + verify JWT)
   - `internal/middleware/auth.go` (Bearer extraction, verify, set user ID on context)
@@ -93,14 +91,16 @@ later phases.
 | Variable | Description | Default | Phase |
 |----------|-------------|---------|-------|
 | `CONFIG_FILE` | Path to YAML config | `config.yaml` | 1 |
-| `GATEWAY_ADDR` | Listen address (moves to YAML in Phase 5) | `:9999` | 1 |
-| `LOG_LEVEL` | slog level (moves to YAML in Phase 5) | `info` | 1 |
-| `MUSIC_BACKEND_URL` | Music backend URL (dropped in Phase 5) | `http://localhost:8080` | 1 |
-| `DATABASE_URL` | Postgres connection string (env-only, secret) | — | 7 |
+| `POSTGRES_USER` | Postgres user (compose + gateway) | `gateway` | 6 |
+| `POSTGRES_PASSWORD` | Postgres password (compose + gateway) | — | 6 |
+| `POSTGRES_DB` | Postgres database name (compose + gateway) | `gateway` | 6 |
+| `REDIS_PASSWORD` | Redis password (compose + gateway) | — | 6 |
+| `DATABASE_URL` | Postgres connection string (built from `POSTGRES_*` in compose) | — | 7 |
 | `JWT_SECRET` | JWT signing secret (env-only, required) | — | 9 |
-| `REDIS_URL` | Redis connection string (env-only, secret) | `localhost:6379` | 10 |
+| `REDIS_URL` | Redis connection string (built from `REDIS_PASSWORD` in compose) | — | 10 |
 
-Copy `.env.example` to `.env`. The `.env` file is gitignored.
+Copy `.env.example` to `.env`. The `.env` file is gitignored. Compose
+reads it automatically for `${VAR}` interpolation.
 
 ### YAML config (`config.yaml`)
 
@@ -156,13 +156,17 @@ gateway/
 │   ├── middleware/recovery.go       # panic recovery -> 500
 │   ├── middleware/timeout.go        # global per-request deadline
 │   └── httperr/respond.go           # uniform error envelope
-├── config.yaml                      # backends + routes + defaults
+├── config.yaml                      # server + backends + routes + defaults
+├── docker-compose.yml               # gateway + music + postgres + redis (Phase 6)
+├── Dockerfile                       # multi-stage dev/prod (Phase 6)
 ├── .env.example
 ├── go.mod
 └── go.sum
 ```
 
 ## Running
+
+### Bare metal
 
 ```bash
 # start a backend (e.g. music on localhost:8080), then:
@@ -175,4 +179,13 @@ curl -i localhost:9000/albums         # 200 proxied response
 curl -i localhost:9000/nonexistent    # 404 unmatched route
 # stop the backend, then:
 curl -i localhost:9000/albums         # 502 uniform error envelope
+```
+
+### Docker Compose (Phase 6+)
+
+```bash
+docker compose up          # gateway + music + postgres + redis
+curl -i localhost:9000/healthz
+curl -i localhost:9000/albums
+docker compose down         # stop all
 ```
