@@ -127,7 +127,7 @@ func main() {
 	defer cancel()
 	shErr := server.Shutdown(ctx)
 	if shErr != nil {
-		slog.Error("shutdown error", "error", err)
+		slog.Error("shutdown error", "error", shErr)
 		os.Exit(1)
 	} else {
 		slog.Info("shutdown complete")
