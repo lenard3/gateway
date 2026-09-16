@@ -8,6 +8,15 @@ import (
 	"github.com/joho/godotenv"
 )
 
+const defaultEnvFile = ".env"
+const defaultConfigFile = "config.yaml"
+const defaultServerAddr = ":9000"
+const defaultLogLevel = "info"
+const defaultReadTimeout = "10s"
+const defaultWriteTimeout = "10s"
+const defaultShutdownTimeout = "15s"
+const defaultRequestTimeout = "15s"
+
 type Config struct {
 	ConfigFile string
 	Server     Server `yaml:"server"`
@@ -19,19 +28,21 @@ type Server struct {
 	ReadTimeout     string `yaml:"read_timeout"`
 	WriteTimeout    string `yaml:"write_timeout"`
 	ShutdownTimeout string `yaml:"shutdown_timeout"`
+	RequestTimeout  string `yaml:"request_timeout"`
 }
 
 // Load tries to load all the env vars.
 // Also reads config file for Server settings.
+// Sets standard values for non set server variables
 // Returns filled config, error
 func Load() (*Config, error) {
-	godotenv.Load("./.env")
+	godotenv.Load(defaultEnvFile)
 	c := Config{}
 	var ok bool
 
 	c.ConfigFile, ok = os.LookupEnv("CONFIG_FILE")
 	if !ok {
-		c.ConfigFile = "config.yaml"
+		c.ConfigFile = defaultConfigFile
 	}
 
 	data, err := os.ReadFile(c.ConfigFile)
@@ -45,19 +56,23 @@ func Load() (*Config, error) {
 	}
 
 	if c.Server.Addr == "" {
-		c.Server.Addr = ":9000"
+		c.Server.Addr = defaultServerAddr
 	}
 	if c.Server.LogLevel == "" {
-		c.Server.LogLevel = "info"
+		c.Server.LogLevel = defaultLogLevel
 	}
 	if c.Server.ReadTimeout == "" {
-		c.Server.ReadTimeout = "10s"
+		c.Server.ReadTimeout = defaultReadTimeout
 	}
 	if c.Server.WriteTimeout == "" {
-		c.Server.WriteTimeout = "10s"
+		c.Server.WriteTimeout = defaultWriteTimeout
 	}
 	if c.Server.ShutdownTimeout == "" {
-		c.Server.ShutdownTimeout = "15s"
+		c.Server.ShutdownTimeout = defaultShutdownTimeout
 	}
+	if c.Server.RequestTimeout == "" {
+		c.Server.RequestTimeout = defaultRequestTimeout
+	}
+
 	return &c, nil
 }
