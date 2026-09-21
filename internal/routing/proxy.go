@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 )
 
 const defaultTimeout = 30 * time.Second
+const RoutePrefix = "/api"
 
 type backendEntry struct {
 	Proxy   *httputil.ReverseProxy
@@ -37,6 +39,8 @@ func NewTable(file *File) (*Table, error) {
 		proxy := &httputil.ReverseProxy{
 			// Rewriting the ProxyRequest
 			Rewrite: func(pr *httputil.ProxyRequest) {
+				// Strip the gateway prefix so the backend sees its own path.
+				pr.Out.URL.Path = strings.TrimPrefix(pr.Out.URL.Path, RoutePrefix)
 				pr.SetURL(target)
 				pr.SetXForwarded()
 				for k, v := range backend.Headers {

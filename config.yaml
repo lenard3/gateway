@@ -29,3 +29,4 @@ server:
   read_timeout: "10s"
   write_timeout: "10s"
   shutdown_timeout: "15s"
+  request_timeout: "10s"

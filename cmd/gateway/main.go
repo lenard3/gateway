@@ -76,10 +76,12 @@ func main() {
 	router.Use(middleware.Logging())
 	router.Use(middleware.Timeout(10 * time.Second))
 
+	api := router.Group(routing.RoutePrefix)
+
 	// Loop through Routes and check if proxy is present.
 	// Change context so the timeout gets baked in directly.
 	for _, route := range table.Routes {
-		router.Handle(route.Method, route.Path, func(ctx *gin.Context) {
+		api.Handle(route.Method, route.Path, func(ctx *gin.Context) {
 			entry, ok := table.ProxyFor(route.Backend)
 			if !ok {
 				httperr.Respond(ctx, http.StatusBadGateway, "bad_gateway", "backend not found")
