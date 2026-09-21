@@ -18,8 +18,9 @@ const defaultShutdownTimeout = "15s"
 const defaultRequestTimeout = "15s"
 
 type Config struct {
-	ConfigFile string
-	Server     Server `yaml:"server"`
+	ConfigFile  string
+	DatabaseURL string
+	Server      Server `yaml:"server"`
 }
 
 type Server struct {
@@ -45,6 +46,12 @@ func Load() (*Config, error) {
 		c.ConfigFile = defaultConfigFile
 	}
 
+	c.DatabaseURL, ok = os.LookupEnv("DATABASE_URL")
+	if !ok {
+		return nil, fmt.Errorf("error reading `POSTGRES_URL`")
+	}
+
+	// reading server section of config.yaml file
 	data, err := os.ReadFile(c.ConfigFile)
 	if err != nil {
 		return nil, fmt.Errorf("read config: %w", err)

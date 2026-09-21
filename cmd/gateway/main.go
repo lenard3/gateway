@@ -8,6 +8,7 @@ import (
 	"gateway/internal/logger"
 	"gateway/internal/middleware"
 	"gateway/internal/routing"
+	"gateway/internal/store"
 	"log/slog"
 	"net/http"
 	"os"
@@ -30,6 +31,21 @@ func main() {
 	lgr := logger.New(cfg.Server.LogLevel)
 	slog.SetDefault(lgr)
 	slog.Info("gateway starting", "addr", cfg.Server.Addr, "log_level", cfg.Server.LogLevel)
+
+	pool, err := store.Open(context.Background(), cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("Failed to open postgres pool", "error", err)
+		// manual close because os.Exit stops without respecting defer
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	err = store.Migrate("migrations", cfg.DatabaseURL)
+	if err != nil {
+		slog.Error("Failed to apply migrations", "error", err)
+		os.Exit(1)
+	}
+	slog.Info("database connected")
 
 	// Load config file
 	cfgyml, err := routing.LoadFile(cfg.ConfigFile)
@@ -112,7 +128,7 @@ func main() {
 		Handler:        router,
 		ReadTimeout:    readTimeout,
 		WriteTimeout:   writeTimeout,
-		MaxHeaderBytes: 1 << 20, // 1MB
+		MaxHeaderBytes: 1 << 20, // 1MB (1 * 20**20)
 	}
 
 	// Buffered signal channel — capacity 1 so a signal is not dropped
@@ -153,6 +169,7 @@ func main() {
 	} else {
 		// All in-flight requests completed within the deadline.
 		slog.Info("shutdown complete")
+		pool.Close()
 		os.Exit(0)
 	}
 }
