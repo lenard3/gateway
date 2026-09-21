@@ -36,15 +36,15 @@ timeouts and custom headers. Sits in front of multiple backend services.
   - `gateway/Dockerfile` with `dev` + `prod` targets
   - `gateway/.dockerignore`
   - `gateway/docker-compose.yml` — gateway, music, postgres, redis on one network
-
-### Planned
-
-- [ ] Postgres connection pool + migrations — Phase 7
+- [x] Postgres connection pool + migrations — Phase 7
   - Add `pgx`, `pgxpool`, `golang-migrate`
   - Add `DATABASE_URL` to `.env` + config (env-only, required, errors if missing)
   - `migrations/000001_create_users.up.sql` + `.down.sql`
   - `internal/store/db.go` (pool creation + migration runner, handle `ErrNoChange`)
   - Open pool + run migrations at startup, close pool on shutdown
+
+### Planned
+
 - [ ] User registration with argon2id — Phase 8
   - Add `golang.org/x/crypto/argon2`
   - `internal/auth/password.go` (hash + verify in PHC string format)
