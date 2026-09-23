@@ -30,3 +30,7 @@ server:
   write_timeout: "10s"
   shutdown_timeout: "15s"
   request_timeout: "10s"
+
+jwt:
+  access_ttl: 15m
+  refresh_ttl: 24h

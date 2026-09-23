@@ -151,6 +151,52 @@ func main() {
 		}
 		ctx.JSON(http.StatusCreated, gin.H{"id": newUser.ID, "email": newUser.Email})
 	})
+	router.POST("/login", func(ctx *gin.Context) {
+		type Request struct {
+			Email    string
+			Password string
+		}
+		var req Request
+
+		if err := ctx.ShouldBindJSON(&req); err != nil {
+			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "can't parse request")
+			slog.Error("Error in Request Body", "error", err)
+			return
+		}
+
+		user, err := userStore.GetByEmail(ctx.Request.Context(), req.Email)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusUnauthorized, "invalid_credentials", "credentials are incorrect")
+			slog.Error("User retrieval failed: %w", "error", err)
+			return
+		}
+		ok, err := auth.Verify(req.Password, user.PasswordHash)
+		if !ok {
+			httperr.Respond(ctx, http.StatusUnauthorized, "invalid_credentials", "credentials are incorrect")
+			slog.Error("User verification failed: %w", "error", err)
+			return
+		}
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("PW verification failed: %w", "error", err)
+			return
+		}
+
+		ttl, err := time.ParseDuration(cfg.JWT.Access_ttl)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("Time parsing failed. access_ttl bad: %w", "error", err)
+			return
+		}
+
+		token, err := auth.IssueAccessToken(user.ID, cfg.JWTSecret, ttl)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("Token issue failed: %w", "error", err)
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "Bearer"})
+	})
 
 	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
 	if err != nil {

@@ -16,11 +16,14 @@ const defaultReadTimeout = "10s"
 const defaultWriteTimeout = "10s"
 const defaultShutdownTimeout = "15s"
 const defaultRequestTimeout = "15s"
+const defaultAccessTTL = "15m"
 
 type Config struct {
 	ConfigFile  string
 	DatabaseURL string
+	JWTSecret   string
 	Server      Server `yaml:"server"`
+	JWT         JWT    `yaml:"jwt"`
 }
 
 type Server struct {
@@ -30,6 +33,10 @@ type Server struct {
 	WriteTimeout    string `yaml:"write_timeout"`
 	ShutdownTimeout string `yaml:"shutdown_timeout"`
 	RequestTimeout  string `yaml:"request_timeout"`
+}
+
+type JWT struct {
+	Access_ttl string `yaml:"access_ttl"`
 }
 
 // Load tries to load all the env vars.
@@ -49,6 +56,11 @@ func Load() (*Config, error) {
 	c.DatabaseURL, ok = os.LookupEnv("DATABASE_URL")
 	if !ok {
 		return nil, fmt.Errorf("error reading `POSTGRES_URL`")
+	}
+
+	c.JWTSecret, ok = os.LookupEnv("JWT_SECRET")
+	if !ok {
+		return nil, fmt.Errorf("error reading `JWT_SECRET`")
 	}
 
 	// reading server section of config.yaml file
@@ -79,6 +91,10 @@ func Load() (*Config, error) {
 	}
 	if c.Server.RequestTimeout == "" {
 		c.Server.RequestTimeout = defaultRequestTimeout
+	}
+
+	if c.JWT.Access_ttl == "" {
+		c.JWT.Access_ttl = defaultAccessTTL
 	}
 
 	return &c, nil
