@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"errors"
+	"gateway/internal/auth"
 	"gateway/internal/config"
 	"gateway/internal/httperr"
 	"gateway/internal/logger"
@@ -46,6 +47,8 @@ func main() {
 		os.Exit(1)
 	}
 	slog.Info("database connected")
+
+	userStore := store.NewUserStore(pool)
 
 	// Load config file
 	cfgyml, err := routing.LoadFile(cfg.ConfigFile)
@@ -107,6 +110,46 @@ func main() {
 
 	router.GET("/healthz", func(ctx *gin.Context) {
 		ctx.JSON(http.StatusOK, gin.H{"status": "healthy"})
+	})
+	router.POST("/register", func(ctx *gin.Context) {
+		type Req struct {
+			Email    string
+			Password string
+		}
+		var req Req
+
+		if err := ctx.ShouldBindJSON(&req); err != nil {
+			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "can't parse request")
+			slog.Error("Error in Request Body", "error", err)
+			return
+		}
+		if req.Email == "" {
+			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "email field cannot be empty")
+			return
+		}
+		// WARN: only basic pw rules
+		if req.Password == "" || len(req.Password) < 8 {
+			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "password not in the correct format")
+			return
+		}
+
+		pwHash, err := auth.Hash(req.Password)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "internal server error")
+			slog.Error("PW hashing failed", "error", err)
+			return
+		}
+		newUser, err := userStore.Create(ctx.Request.Context(), req.Email, pwHash)
+		if err != nil {
+			if errors.Is(err, store.ErrEmailExists) {
+				httperr.Respond(ctx, http.StatusConflict, "email_exists", "email already registered")
+				return
+			}
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "registration failed")
+			slog.Error("User creation failed", "error", err)
+			return
+		}
+		ctx.JSON(http.StatusCreated, gin.H{"id": newUser.ID, "email": newUser.Email})
 	})
 
 	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
