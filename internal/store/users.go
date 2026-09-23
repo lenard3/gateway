@@ -56,7 +56,7 @@ func (s *UserStore) Create(ctx context.Context, email string, passwordHash strin
 // Throws sentinal error on email not found or normal error on failure.
 func (s *UserStore) GetByEmail(ctx context.Context, email string) (*User, error) {
 	var u User
-	row := s.pool.QueryRow(ctx, "SELECT id, email, password_hash, created_at, updated_at FROM users WHERE email = $1", email)
+	row := s.pool.QueryRow(ctx, "SELECT id, email, password_hash, created_at, modified_at FROM users WHERE email = $1", email)
 
 	err := row.Scan(&u.ID, &u.Email, &u.PasswordHash, &u.CreatedAt, &u.UpdatedAt)
 	if err != nil {

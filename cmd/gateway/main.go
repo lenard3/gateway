@@ -112,11 +112,11 @@ func main() {
 		ctx.JSON(http.StatusOK, gin.H{"status": "healthy"})
 	})
 	router.POST("/register", func(ctx *gin.Context) {
-		type Req struct {
+		type Request struct {
 			Email    string
 			Password string
 		}
-		var req Req
+		var req Request
 
 		if err := ctx.ShouldBindJSON(&req); err != nil {
 			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "can't parse request")
