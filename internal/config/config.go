@@ -17,10 +17,12 @@ const defaultWriteTimeout = "10s"
 const defaultShutdownTimeout = "15s"
 const defaultRequestTimeout = "15s"
 const defaultAccessTTL = "15m"
+const defaultRefreshTTL = "24h"
 
 type Config struct {
 	ConfigFile  string
 	DatabaseURL string
+	RedisURL    string
 	JWTSecret   string
 	Server      Server `yaml:"server"`
 	JWT         JWT    `yaml:"jwt"`
@@ -36,7 +38,8 @@ type Server struct {
 }
 
 type JWT struct {
-	Access_ttl string `yaml:"access_ttl"`
+	AccessTTL  string `yaml:"access_ttl"`
+	RefreshTTL string `yaml:"refres_ttl"`
 }
 
 // Load tries to load all the env vars.
@@ -56,6 +59,11 @@ func Load() (*Config, error) {
 	c.DatabaseURL, ok = os.LookupEnv("DATABASE_URL")
 	if !ok {
 		return nil, fmt.Errorf("error reading `POSTGRES_URL`")
+	}
+
+	c.RedisURL, ok = os.LookupEnv("REDIS_URL")
+	if !ok {
+		return nil, fmt.Errorf("error reading `REDIS_URL`")
 	}
 
 	c.JWTSecret, ok = os.LookupEnv("JWT_SECRET")
@@ -93,8 +101,11 @@ func Load() (*Config, error) {
 		c.Server.RequestTimeout = defaultRequestTimeout
 	}
 
-	if c.JWT.Access_ttl == "" {
-		c.JWT.Access_ttl = defaultAccessTTL
+	if c.JWT.AccessTTL == "" {
+		c.JWT.AccessTTL = defaultAccessTTL
+	}
+	if c.JWT.RefreshTTL == "" {
+		c.JWT.RefreshTTL = defaultAccessTTL
 	}
 
 	return &c, nil

@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -24,4 +26,13 @@ func IssueAccessToken(userID string, secret string, ttl time.Duration) (string, 
 	}
 
 	return signed, nil
+}
+
+func GenerateRefreshToken() (string, error) {
+	b := make([]byte, 32)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", fmt.Errorf("auth_GenerateRefreshToken: failed to generate refresh token: %w", err)
+	}
+	return base64.RawStdEncoding.EncodeToString(b), nil
 }

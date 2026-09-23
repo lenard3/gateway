@@ -48,6 +48,15 @@ func main() {
 	}
 	slog.Info("database connected")
 
+	rdb, err := store.OpenRedis(context.Background(), cfg.RedisURL)
+	if err != nil {
+		slog.Error("Failed to start redis client", "error", err)
+		os.Exit(1)
+	}
+	defer rdb.Close()
+	tokenStore := store.NewTokenStore(rdb)
+	slog.Info("redis connected")
+
 	userStore := store.NewUserStore(pool)
 
 	// Load config file
@@ -182,20 +191,105 @@ func main() {
 			return
 		}
 
-		ttl, err := time.ParseDuration(cfg.JWT.Access_ttl)
+		accessTTL, err := time.ParseDuration(cfg.JWT.AccessTTL)
 		if err != nil {
 			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
 			slog.Error("Time parsing failed. access_ttl bad: %w", "error", err)
 			return
 		}
 
-		token, err := auth.IssueAccessToken(user.ID, cfg.JWTSecret, ttl)
+		accessToken, err := auth.IssueAccessToken(user.ID, cfg.JWTSecret, accessTTL)
 		if err != nil {
 			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
 			slog.Error("Token issue failed: %w", "error", err)
 			return
 		}
-		ctx.JSON(http.StatusOK, gin.H{"access_token": token, "token_type": "Bearer"})
+
+		refreshToken, err := auth.GenerateRefreshToken()
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("Token issue failed: %w", "error", err)
+			return
+		}
+
+		refreshTTL, err := time.ParseDuration(cfg.JWT.RefreshTTL)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("TokenTTL duration parsing failed: %w", "error", err)
+			return
+		}
+		if err := tokenStore.StoreRefresh(ctx.Request.Context(), refreshToken, user.ID, refreshTTL); err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("Token issue failed: %w", "error", err)
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"access_token": accessToken, "refresh_token": refreshToken, "token_type": "Bearer"})
+	})
+	router.POST("/refresh", func(ctx *gin.Context) {
+		type Request struct {
+			RefreshToken string
+		}
+		var req Request
+
+		if err := ctx.ShouldBindJSON(&req); err != nil {
+			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "can't parse request")
+			slog.Error("Error in Request Body", "error", err)
+			return
+		}
+
+		userID, err := tokenStore.GetRefresh(ctx.Request.Context(), req.RefreshToken)
+		if err != nil {
+			if errors.Is(err, store.ErrTokenNotFound) {
+				httperr.Respond(ctx, http.StatusUnauthorized, "invalid_refresh_token", "invalid token")
+				slog.Error("refresh token doesn't exist", "error", err)
+				return
+			}
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "refresh failed")
+			slog.Error("refresh token doesn't exist", "error", err)
+			return
+		}
+
+		if err := tokenStore.DeleteRefresh(ctx.Request.Context(), req.RefreshToken); err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "refresh failed")
+			slog.Error("refresh token can't be deleted", "error", err)
+			return
+		}
+
+		newRefresh, err := auth.GenerateRefreshToken()
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "refresh failed")
+			slog.Error("refresh token can't be generated", "error", err)
+			return
+		}
+
+		refreshTTL, err := time.ParseDuration(cfg.JWT.RefreshTTL)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("TokenTTL duration parsing failed: %w", "error", err)
+			return
+		}
+		if err := tokenStore.StoreRefresh(ctx, newRefresh, userID, refreshTTL); err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "refresh failed")
+			slog.Error("refresh token can't be stored", "error", err)
+			return
+		}
+
+		accessTTL, err := time.ParseDuration(cfg.JWT.AccessTTL)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("Time parsing failed. access_ttl bad: %w", "error", err)
+			return
+		}
+		newAccess, err := auth.IssueAccessToken(userID, cfg.JWTSecret, accessTTL)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "login failed")
+			slog.Error("access token issue failed: %w", "error", err)
+			return
+		}
+
+		ctx.JSON(http.StatusOK, gin.H{"access_token": newAccess, "refresh_token": newRefresh, "token_type": "Bearer"})
+
 	})
 
 	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
