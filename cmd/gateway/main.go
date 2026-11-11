@@ -85,7 +85,7 @@ func main() {
 	// registers middleware
 	router.Use(middleware.Recovery())
 	router.Use(middleware.Logging())
-	router.Use(middleware.Timeout(10 * time.Second))
+	router.Use(middleware.Timeout(requestTimeout))
 
 	public := router.Group(routing.RoutePrefix)
 	protected := router.Group(routing.RoutePrefix)
@@ -145,6 +145,7 @@ func main() {
 			return
 		}
 		// WARN: only basic pw rules
+		// Move to module later; maybe
 		if req.Password == "" || len(req.Password) < 8 {
 			httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "password not in the correct format")
 			return
