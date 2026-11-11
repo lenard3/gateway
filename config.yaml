@@ -16,9 +16,11 @@ routes:
   - method: GET
     path: /albums
     backend: music
+    public: false
   - method: GET
     path: /album/:id
     backend: music
+    public: true
   - method: POST
     path: /album
     backend: music
