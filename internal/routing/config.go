@@ -23,10 +23,13 @@ type Backend struct {
 	Headers    map[string]string `yaml:"headers"`
 }
 
+// public has no hard coded default and will always fail closed (auth required).
+// empty values are treated as 0 (false).
 type Route struct {
 	Method  string `yaml:"method"`
 	Path    string `yaml:"path"`
 	Backend string `yaml:"backend"`
+	Public  bool   `yaml:"public"`
 }
 
 type Default struct {

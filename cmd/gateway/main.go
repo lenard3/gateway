@@ -36,7 +36,6 @@ func main() {
 	pool, err := store.Open(context.Background(), cfg.DatabaseURL)
 	if err != nil {
 		slog.Error("Failed to open postgres pool", "error", err)
-		// manual close because os.Exit stops without respecting defer
 		os.Exit(1)
 	}
 	defer pool.Close()
@@ -88,12 +87,21 @@ func main() {
 	router.Use(middleware.Logging())
 	router.Use(middleware.Timeout(10 * time.Second))
 
-	api := router.Group(routing.RoutePrefix)
+	public := router.Group(routing.RoutePrefix)
+	protected := router.Group(routing.RoutePrefix)
+	protected.Use(middleware.Auth(cfg.JWTSecret, tokenStore))
 
 	// Loop through Routes and check if proxy is present.
 	// Change context so the timeout gets baked in directly.
 	for _, route := range table.Routes {
-		api.Handle(route.Method, route.Path, func(ctx *gin.Context) {
+		var target *gin.RouterGroup
+		if route.Public {
+			target = public
+		} else {
+			target = protected
+		}
+
+		target.Handle(route.Method, route.Path, func(ctx *gin.Context) {
 			entry, ok := table.ProxyFor(route.Backend)
 			if !ok {
 				httperr.Respond(ctx, http.StatusBadGateway, "bad_gateway", "backend not found")
