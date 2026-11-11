@@ -3,3 +3,4 @@
 .env
 *.md
 docker-compose.yaml
+.analysis/
