@@ -12,6 +12,7 @@ import (
 var ErrTokenNotFound = errors.New("Token not found.")
 
 const refreshPrefix = "refresh:"
+const blockedPrefix = "blocked:"
 
 type TokenStore struct {
 	client *redis.Client
@@ -68,11 +69,38 @@ func (s *TokenStore) GetRefresh(ctx context.Context, token string) (string, erro
 // Returns err.
 func (s *TokenStore) DeleteRefresh(ctx context.Context, token string) error {
 	err := s.client.Del(ctx, refreshPrefix+token).Err()
-	if err == redis.Nil {
-		return ErrTokenNotFound
-	}
 	if err != nil {
 		return fmt.Errorf("store_DeleteRefresh: can't delete token: %s", err.Error())
 	}
 	return nil
+}
+
+// BlocklistAccess puts a jti token into the blocklist with the value "1"
+// returns error on failure
+func (s *TokenStore) BlocklistAccess(ctx context.Context, jti string, ttl time.Duration) error {
+	// moves jti to blocklist. "1" is a placeholder value because list needs one
+	status := s.client.Set(ctx, blockedPrefix+jti, "1", ttl)
+
+	err := status.Err()
+	if err != nil {
+		return fmt.Errorf("store_BlocklistAccess: can't move token to blocklist: %s", err.Error())
+	}
+	return nil
+}
+
+// IsBlocked checks whether a token is currently blocked
+// returns [true|false], error
+func (s *TokenStore) IsBlocked(ctx context.Context, jti string) (bool, error) {
+	status := s.client.Exists(ctx, blockedPrefix+jti)
+	err := status.Err()
+	if err != nil {
+		return false, fmt.Errorf("store_IsBlocked: can't check blocklist: %s", err.Error())
+	}
+
+	value := status.Val()
+	if value > 0 {
+		return true, nil
+	}
+	// basically status.Val() == 0
+	return false, nil
 }

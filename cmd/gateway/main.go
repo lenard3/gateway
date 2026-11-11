@@ -10,10 +10,12 @@ import (
 	"gateway/internal/middleware"
 	"gateway/internal/routing"
 	"gateway/internal/store"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -237,7 +239,7 @@ func main() {
 	})
 	router.POST("/refresh", func(ctx *gin.Context) {
 		type Request struct {
-			RefreshToken string
+			RefreshToken string `json:"refresh_token"`
 		}
 		var req Request
 
@@ -299,6 +301,65 @@ func main() {
 
 		ctx.JSON(http.StatusOK, gin.H{"access_token": newAccess, "refresh_token": newRefresh, "token_type": "Bearer"})
 
+	})
+	router.POST("/logout", func(ctx *gin.Context) {
+		type Request struct {
+			RefreshToken string `json:"refresh_token"`
+		}
+		var req Request
+		if err := ctx.ShouldBindJSON(&req); err != nil {
+			if !errors.Is(err, io.EOF) {
+				httperr.Respond(ctx, http.StatusBadRequest, "invalid_input", "can't parse request")
+				slog.Error("Error in Request Body", "error", err)
+				return
+			}
+		}
+
+		const tokenType = "Bearer"
+
+		authHeader := ctx.GetHeader("Authorization")
+		// we don't allow empty auth headers since every request needs a token anyway
+		if authHeader == "" {
+			httperr.Respond(ctx, http.StatusUnauthorized, "missing_token", "authorization header required")
+			return
+		}
+
+		// check token type and error out if necessary
+		parts := strings.SplitN(authHeader, " ", 2)
+		if ok := strings.EqualFold(parts[0], tokenType); !ok {
+			httperr.Respond(ctx, http.StatusUnauthorized, "invalid_auth_header", "auth header invalid")
+			return
+		}
+
+		if len(parts) != 2 || parts[1] == "" {
+			httperr.Respond(ctx, http.StatusUnauthorized, "invalid_auth_header", "auth header invalid")
+			return
+		}
+
+		claims, err := auth.VerifyAccessToken(parts[1], cfg.JWTSecret)
+		if err != nil {
+			httperr.Respond(ctx, http.StatusUnauthorized, "invalid_token", "token verification failed")
+			slog.Debug("token verification failed", "error", err)
+			return
+		}
+
+		ttl := time.Until(claims.ExpiresAt.Time)
+		if ttl > 0 {
+			blockErr := tokenStore.BlocklistAccess(ctx.Request.Context(), claims.ID, ttl)
+			if blockErr != nil {
+				httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "blocklist not accessible")
+				slog.Debug("blocklist can't be accessed", "error", blockErr)
+				return
+			}
+		}
+
+		delErr := tokenStore.DeleteRefresh(ctx.Request.Context(), req.RefreshToken)
+		if delErr != nil {
+			httperr.Respond(ctx, http.StatusInternalServerError, "internal_error", "refresh token can't be deleted")
+			slog.Debug("refresh token can't be deleted", "error", delErr)
+			return
+		}
+		ctx.JSON(http.StatusOK, gin.H{"status": "logged out"})
 	})
 
 	readTimeout, err := time.ParseDuration(cfg.Server.ReadTimeout)
